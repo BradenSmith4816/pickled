@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import org.json.JSONArray
 
-/** Persists the roster and session settings in SharedPreferences. */
+/** Persists the roster and who's checked in, in SharedPreferences. */
 class PlayerStore(context: Context) {
 
     private val prefs = context.getSharedPreferences("pickled", Context.MODE_PRIVATE)
@@ -17,21 +17,15 @@ class PlayerStore(context: Context) {
 
     fun loadActive(): Set<String> = prefs.getStringSet(KEY_ACTIVE, null)?.toSet() ?: emptySet()
 
-    fun loadMode(): GameMode =
-        prefs.getString(KEY_MODE, null)?.let { runCatching { GameMode.valueOf(it) }.getOrNull() }
-            ?: GameMode.DOUBLES
-
-    fun save(roster: List<String>, active: Set<String>, mode: GameMode) {
+    fun save(roster: List<String>, active: Set<String>) {
         prefs.edit {
             putString(KEY_ROSTER, JSONArray(roster).toString())
             putStringSet(KEY_ACTIVE, active)
-            putString(KEY_MODE, mode.name)
         }
     }
 
     private companion object {
         const val KEY_ROSTER = "roster"
         const val KEY_ACTIVE = "active"
-        const val KEY_MODE = "mode"
     }
 }

@@ -18,10 +18,7 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
     var active by mutableStateOf(store.loadActive())
         private set
 
-    var mode by mutableStateOf(store.loadMode())
-        private set
-
-    var courts by mutableStateOf(CourtAssigner.empty(DEFAULT_COURTS, mode))
+    var courts by mutableStateOf(CourtAssigner.empty(DEFAULT_COURTS))
         private set
 
     val activePlayers: List<String> get() = roster.filter { it in active }
@@ -65,20 +62,16 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setEveryoneActive(on: Boolean) {
         active = if (on) roster.toSet() else emptySet()
-        if (!on) courts = CourtAssigner.empty(courts.size, mode)
+        if (!on) courts = CourtAssigner.clear(courts)
         persist()
     }
 
-    fun selectMode(newMode: GameMode) {
-        if (newMode == mode) return
-        mode = newMode
-        courts = CourtAssigner.empty(courts.size, newMode)
-        persist()
+    fun setCourtMode(courtIndex: Int, mode: GameMode) {
+        courts = CourtAssigner.setMode(courts, courtIndex, mode)
     }
 
     fun setCourtCount(count: Int) {
-        courts = CourtAssigner.resize(courts, count.coerceIn(1, MAX_COURTS), mode)
-        persist()
+        courts = CourtAssigner.resize(courts, count.coerceIn(1, MAX_COURTS))
     }
 
     fun roll() {
@@ -86,7 +79,7 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun reset() {
-        courts = CourtAssigner.empty(courts.size, mode)
+        courts = CourtAssigner.clear(courts)
     }
 
     /** Drag & drop result: [target] null means "back to waiting". */
@@ -99,7 +92,7 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
         courts = CourtAssigner.unpin(courts, name)
     }
 
-    private fun persist() = store.save(roster, active, mode)
+    private fun persist() = store.save(roster, active)
 
     companion object {
         const val MAX_COURTS = 12

@@ -62,6 +62,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.pickled.Court
 import com.example.pickled.GameMode
 import com.example.pickled.PickledViewModel
 import com.example.pickled.Placement
@@ -99,7 +100,7 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
                         enabled = vm.activePlayers.isNotEmpty(),
                         modifier = Modifier.weight(1f).padding(end = 16.dp).height(52.dp),
                     ) {
-                        Text("🎲  Roll ${vm.mode.label}", style = MaterialTheme.typography.titleMedium)
+                        Text("🎲  Roll", style = MaterialTheme.typography.titleMedium)
                     }
                 }
             },
@@ -118,10 +119,8 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 8.dp),
                 )
-                GameSetup(
-                    mode = vm.mode,
+                CourtCountRow(
                     courtCount = vm.courts.size,
-                    onMode = vm::selectMode,
                     onCourtCount = vm::setCourtCount,
                 )
                 PlayersSection(
@@ -143,7 +142,7 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
                     CourtCard(
                         index = index,
                         court = court,
-                        mode = vm.mode,
+                        onMode = { vm.setCourtMode(index, it) },
                         drag = drag,
                         onDrop = onDrop,
                         onUnpin = vm::unpin,
@@ -170,42 +169,34 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
 }
 
 @Composable
-private fun GameSetup(
-    mode: GameMode,
+private fun CourtCountRow(
     courtCount: Int,
-    onMode: (GameMode) -> Unit,
     onCourtCount: (Int) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Game", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            ModeToggle(mode = mode, onMode = onMode)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Courts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        FilledTonalIconButton(onClick = { onCourtCount(courtCount - 1) }, enabled = courtCount > 1) {
+            Text("−", style = MaterialTheme.typography.titleLarge)
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Courts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            FilledTonalIconButton(onClick = { onCourtCount(courtCount - 1) }, enabled = courtCount > 1) {
-                Text("−", style = MaterialTheme.typography.titleLarge)
-            }
-            Text(
-                "$courtCount",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-            FilledTonalIconButton(
-                onClick = { onCourtCount(courtCount + 1) },
-                enabled = courtCount < PickledViewModel.MAX_COURTS,
-            ) {
-                Text("+", style = MaterialTheme.typography.titleLarge)
-            }
+        Text(
+            "$courtCount",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+        FilledTonalIconButton(
+            onClick = { onCourtCount(courtCount + 1) },
+            enabled = courtCount < PickledViewModel.MAX_COURTS,
+        ) {
+            Text("+", style = MaterialTheme.typography.titleLarge)
         }
     }
 }
 
-/** Compact pill toggle, sized to sit in a row like the court stepper. */
+/** Compact Doubles/Singles pill toggle shown in each court's header. */
 @Composable
 private fun ModeToggle(mode: GameMode, onMode: (GameMode) -> Unit) {
     val colors = MaterialTheme.colorScheme
-    Surface(shape = RoundedCornerShape(50), color = colors.surfaceVariant) {
+    Surface(shape = RoundedCornerShape(50), color = colors.surface.copy(alpha = 0.7f)) {
         Row(Modifier.padding(3.dp)) {
             GameMode.entries.forEach { m ->
                 val selected = m == mode
@@ -217,7 +208,7 @@ private fun ModeToggle(mode: GameMode, onMode: (GameMode) -> Unit) {
                         .clip(RoundedCornerShape(50))
                         .background(if (selected) colors.primary else Color.Transparent)
                         .clickable { onMode(m) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                 )
             }
         }
@@ -364,8 +355,8 @@ private fun WaitingSection(
 @Composable
 private fun CourtCard(
     index: Int,
-    court: List<Placement?>,
-    mode: GameMode,
+    court: Court,
+    onMode: (GameMode) -> Unit,
     drag: DragState,
     onDrop: (String, DropTarget?) -> Unit,
     onUnpin: (String) -> Unit,
@@ -375,14 +366,18 @@ private fun CourtCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                "Court ${index + 1}",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Court ${index + 1}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                ModeToggle(mode = court.mode, onMode = onMode)
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TeamColumn(
-                    slots = 0 until mode.perSide,
+                    slots = court.teamA(),
                     courtIndex = index, court = court, drag = drag, onDrop = onDrop, onUnpin = onUnpin,
                     modifier = Modifier.weight(1f),
                 )
@@ -393,7 +388,7 @@ private fun CourtCard(
                     modifier = Modifier.padding(horizontal = 8.dp),
                 )
                 TeamColumn(
-                    slots = mode.perSide until mode.perCourt,
+                    slots = court.teamB(),
                     courtIndex = index, court = court, drag = drag, onDrop = onDrop, onUnpin = onUnpin,
                     modifier = Modifier.weight(1f),
                 )
@@ -406,7 +401,7 @@ private fun CourtCard(
 private fun TeamColumn(
     slots: IntRange,
     courtIndex: Int,
-    court: List<Placement?>,
+    court: Court,
     drag: DragState,
     onDrop: (String, DropTarget?) -> Unit,
     onUnpin: (String) -> Unit,
@@ -416,7 +411,7 @@ private fun TeamColumn(
         for (i in slots) {
             SlotBox(
                 slot = Slot(courtIndex, i),
-                placement = court.getOrNull(i),
+                placement = court.slots.getOrNull(i),
                 drag = drag,
                 onDrop = onDrop,
                 onUnpin = onUnpin,

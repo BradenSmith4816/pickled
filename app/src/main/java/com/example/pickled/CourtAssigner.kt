@@ -20,21 +20,31 @@ data class Slot(val court: Int, val index: Int)
  */
 data class Placement(val name: String, val pinned: Boolean)
 
-/** One entry per court, each holding `mode.perCourt` slots. */
-typealias Courts = List<List<Placement?>>
+/** One court: its game type and `mode.perCourt` slots. */
+data class Court(
+    val mode: GameMode = GameMode.DOUBLES,
+    val slots: List<Placement?> = List(mode.perCourt) { null },
+) {
+    fun teamA(): IntRange = 0 until mode.perSide
+    fun teamB(): IntRange = mode.perSide until mode.perCourt
+}
+
+typealias Courts = List<Court>
 
 /** Pure functions for court assignment. Kept free of Android so it is easy to unit test. */
 object CourtAssigner {
 
-    fun empty(courtCount: Int, mode: GameMode): Courts =
-        List(courtCount) { List(mode.perCourt) { null } }
+    fun empty(courtCount: Int): Courts = List(courtCount) { Court() }
+
+    /** Takes everyone off every court, keeping each court's game type. */
+    fun clear(courts: Courts): Courts = courts.map { Court(it.mode) }
 
     fun placedNames(courts: Courts): Set<String> =
-        courts.flatten().mapNotNullTo(mutableSetOf()) { it?.name }
+        courts.flatMap { it.slots }.mapNotNullTo(mutableSetOf()) { it?.name }
 
     fun find(courts: Courts, name: String): Slot? {
         courts.forEachIndexed { c, court ->
-            court.forEachIndexed { i, p -> if (p?.name == name) return Slot(c, i) }
+            court.slots.forEachIndexed { i, p -> if (p?.name == name) return Slot(c, i) }
         }
         return null
     }
@@ -47,18 +57,18 @@ object CourtAssigner {
      * filled doubles court still produces a fair game (e.g. 1 v 1).
      */
     fun roll(courts: Courts, players: List<String>, random: Random = Random.Default): Courts {
-        val result = courts.map { court -> court.map { p -> p?.takeIf { it.pinned } }.toMutableList() }
-        val placed = placedNames(result)
+        val slots = courts.map { court -> court.slots.map { p -> p?.takeIf { it.pinned } }.toMutableList() }
+        val placed = slots.flatten().mapNotNullTo(mutableSetOf()) { it?.name }
         val pool = players.filter { it !in placed }.shuffled(random).toMutableList()
 
-        val courtOrder = result.indices.sortedByDescending { c -> result[c].count { it != null } }
-        for (c in courtOrder) {
-            for (i in fillOrder(result[c].size)) {
-                if (pool.isEmpty()) return result
-                if (result[c][i] == null) result[c][i] = Placement(pool.removeAt(0), pinned = false)
+        val courtOrder = slots.indices.sortedByDescending { c -> slots[c].count { it != null } }
+        loop@ for (c in courtOrder) {
+            for (i in fillOrder(courts[c].mode)) {
+                if (pool.isEmpty()) break@loop
+                if (slots[c][i] == null) slots[c][i] = Placement(pool.removeAt(0), pinned = false)
             }
         }
-        return result
+        return courts.mapIndexed { c, court -> court.copy(slots = slots[c]) }
     }
 
     /**
@@ -68,32 +78,54 @@ object CourtAssigner {
      */
     fun place(courts: Courts, name: String, target: Slot?): Courts {
         val from = find(courts, name)
-        val result = courts.map { it.toMutableList() }
+        val slots = courts.map { it.slots.toMutableList() }
         if (target == null) {
-            from?.let { result[it.court][it.index] = null }
-            return result
+            from?.let { slots[it.court][it.index] = null }
+        } else {
+            val occupant = slots[target.court][target.index]
+            if (from != null && from != target) {
+                slots[from.court][from.index] = occupant?.copy(pinned = true)
+            }
+            slots[target.court][target.index] = Placement(name, pinned = true)
         }
-        val occupant = result[target.court][target.index]
-        if (from != null && from != target) {
-            result[from.court][from.index] = occupant?.copy(pinned = true)
-        }
-        result[target.court][target.index] = Placement(name, pinned = true)
-        return result
+        return courts.mapIndexed { c, court -> court.copy(slots = slots[c]) }
     }
 
-    fun unpin(courts: Courts, name: String): Courts =
-        courts.map { court -> court.map { p -> if (p?.name == name) p.copy(pinned = false) else p } }
+    fun unpin(courts: Courts, name: String): Courts = mapSlots(courts) { p ->
+        if (p?.name == name) p.copy(pinned = false) else p
+    }
 
-    fun remove(courts: Courts, name: String): Courts =
-        courts.map { court -> court.map { p -> p?.takeUnless { it.name == name } } }
+    fun remove(courts: Courts, name: String): Courts = mapSlots(courts) { p ->
+        p?.takeUnless { it.name == name }
+    }
 
-    /** Adds empty courts or drops trailing ones (their players go back to waiting). */
-    fun resize(courts: Courts, newCount: Int, mode: GameMode): Courts =
+    /**
+     * Switches one court between doubles and singles. Each side keeps its first
+     * player; a doubles partner who no longer fits goes back to waiting.
+     */
+    fun setMode(courts: Courts, courtIndex: Int, mode: GameMode): Courts {
+        val old = courts[courtIndex]
+        if (old.mode == mode) return courts
+        val new = Court(mode).let { court ->
+            val slots = court.slots.toMutableList()
+            val keep = minOf(old.mode.perSide, mode.perSide)
+            for (i in 0 until keep) {
+                slots[court.teamA().first + i] = old.slots[old.teamA().first + i]
+                slots[court.teamB().first + i] = old.slots[old.teamB().first + i]
+            }
+            court.copy(slots = slots)
+        }
+        return courts.mapIndexed { c, court -> if (c == courtIndex) new else court }
+    }
+
+    /** Adds empty doubles courts or drops trailing ones (their players go back to waiting). */
+    fun resize(courts: Courts, newCount: Int): Courts =
         if (newCount <= courts.size) courts.take(newCount)
-        else courts + empty(newCount - courts.size, mode)
+        else courts + empty(newCount - courts.size)
 
-    private fun fillOrder(slotCount: Int): List<Int> {
-        val perSide = slotCount / 2
-        return (0 until perSide).flatMap { listOf(it, perSide + it) }
-    }
+    private fun mapSlots(courts: Courts, transform: (Placement?) -> Placement?): Courts =
+        courts.map { court -> court.copy(slots = court.slots.map(transform)) }
+
+    private fun fillOrder(mode: GameMode): List<Int> =
+        (0 until mode.perSide).flatMap { listOf(it, mode.perSide + it) }
 }
