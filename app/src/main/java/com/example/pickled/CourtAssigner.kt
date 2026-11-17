@@ -81,6 +81,9 @@ object CourtAssigner {
         return result
     }
 
+    fun unpin(courts: Courts, name: String): Courts =
+        courts.map { court -> court.map { p -> if (p?.name == name) p.copy(pinned = false) else p } }
+
     fun remove(courts: Courts, name: String): Courts =
         courts.map { court -> court.map { p -> p?.takeUnless { it.name == name } } }
 

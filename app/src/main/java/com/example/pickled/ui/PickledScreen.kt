@@ -1,6 +1,10 @@
 package com.example.pickled.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,17 +30,12 @@ import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,7 +48,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -62,11 +68,11 @@ import com.example.pickled.Placement
 import com.example.pickled.Slot
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PickledScreen(vm: PickledViewModel = viewModel()) {
     val drag = remember { DragState() }
     var pendingDelete by remember { mutableStateOf<String?>(null) }
+    var playersExpanded by rememberSaveable { mutableStateOf(true) }
 
     val onDrop: (String, DropTarget?) -> Unit = { name, target ->
         when (target) {
@@ -78,11 +84,6 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(
-            topBar = {
-                CenterAlignedTopAppBar(
-                    title = { Text("🥒 Pickled", fontWeight = FontWeight.Bold) },
-                )
-            },
             bottomBar = {
                 BottomAppBar {
                     OutlinedButton(
@@ -91,7 +92,10 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
                     ) { Text("Reset") }
                     Spacer(Modifier.width(12.dp))
                     Button(
-                        onClick = vm::roll,
+                        onClick = {
+                            vm.roll()
+                            playersExpanded = false
+                        },
                         enabled = vm.activePlayers.isNotEmpty(),
                         modifier = Modifier.weight(1f).padding(end = 16.dp).height(52.dp),
                     ) {
@@ -108,14 +112,21 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                Text(
+                    "Pickle Players",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
                 GameSetup(
                     mode = vm.mode,
                     courtCount = vm.courts.size,
-                    suggestedCourts = vm.suggestedCourts,
                     onMode = vm::selectMode,
                     onCourtCount = vm::setCourtCount,
                 )
                 PlayersSection(
+                    expanded = playersExpanded,
+                    onExpandedChange = { playersExpanded = it },
                     roster = vm.roster,
                     active = vm.active,
                     onAdd = vm::addPlayer,
@@ -135,7 +146,7 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
                         mode = vm.mode,
                         drag = drag,
                         onDrop = onDrop,
-                        onUnassign = { vm.move(it, null) },
+                        onUnpin = vm::unpin,
                     )
                 }
             }
@@ -162,25 +173,16 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
 private fun GameSetup(
     mode: GameMode,
     courtCount: Int,
-    suggestedCourts: Int,
     onMode: (GameMode) -> Unit,
     onCourtCount: (Int) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            GameMode.entries.forEachIndexed { i, m ->
-                SegmentedButton(
-                    selected = m == mode,
-                    onClick = { onMode(m) },
-                    shape = SegmentedButtonDefaults.itemShape(i, GameMode.entries.size),
-                ) { Text(m.label) }
-            }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Game", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            ModeToggle(mode = mode, onMode = onMode)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Courts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            if (suggestedCourts > 0 && suggestedCourts != courtCount) {
-                TextButton(onClick = { onCourtCount(suggestedCourts) }) { Text("Fit $suggestedCourts") }
-            }
             FilledTonalIconButton(onClick = { onCourtCount(courtCount - 1) }, enabled = courtCount > 1) {
                 Text("−", style = MaterialTheme.typography.titleLarge)
             }
@@ -199,9 +201,34 @@ private fun GameSetup(
     }
 }
 
+/** Compact pill toggle, sized to sit in a row like the court stepper. */
+@Composable
+private fun ModeToggle(mode: GameMode, onMode: (GameMode) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(shape = RoundedCornerShape(50), color = colors.surfaceVariant) {
+        Row(Modifier.padding(3.dp)) {
+            GameMode.entries.forEach { m ->
+                val selected = m == mode
+                Text(
+                    m.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) colors.onPrimary else colors.onSurfaceVariant,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (selected) colors.primary else Color.Transparent)
+                        .clickable { onMode(m) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlayersSection(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     roster: List<String>,
     active: Set<String>,
     onAdd: (String) -> Unit,
@@ -215,56 +242,77 @@ private fun PlayersSection(
         newName = ""
     }
     val playingCount = roster.count { it in active }
+    val colors = MaterialTheme.colorScheme
+    // Chevron points down when open, right when collapsed.
+    val arrowRotation by animateFloatAsState(if (expanded) 0f else -90f, label = "arrow")
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Whole header row toggles.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onExpandedChange(!expanded) }
+                    .heightIn(min = 44.dp),
+            ) {
+                Chevron(
+                    color = colors.primary,
+                    modifier = Modifier
+                        .padding(end = 10.dp)
+                        .size(24.dp)
+                        .rotate(arrowRotation),
+                )
                 Text(
                     "Players · $playingCount playing",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                if (roster.isNotEmpty()) {
-                    val allIn = playingCount == roster.size
-                    TextButton(onClick = { onAll(!allIn) }) { Text(if (allIn) "None" else "All") }
-                }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newName,
-                    onValueChange = { newName = it },
-                    placeholder = { Text("Add a name") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.Words,
-                        imeAction = ImeAction.Done,
-                    ),
-                    keyboardActions = KeyboardActions(onDone = { submit() }),
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = submit, enabled = newName.isNotBlank()) { Text("Add") }
-            }
-            if (roster.isEmpty()) {
-                Hint("Add everyone who plays. Names are saved for next time.")
-            } else {
-                Hint("Tap a name to mark who's here today.")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    roster.forEach { name ->
-                        FilterChip(
-                            selected = name in active,
-                            onClick = { onToggle(name) },
-                            label = { Text(name) },
-                            trailingIcon = {
-                                Text(
-                                    "✕",
-                                    modifier = Modifier
-                                        .clickable { onDelete(name) }
-                                        .padding(4.dp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            },
+            AnimatedVisibility(visible = expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = newName,
+                            onValueChange = { newName = it },
+                            placeholder = { Text("Add a name") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Words,
+                                imeAction = ImeAction.Done,
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { submit() }),
+                            modifier = Modifier.weight(1f),
                         )
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = submit, enabled = newName.isNotBlank()) { Text("Add") }
+                    }
+                    if (roster.isEmpty()) {
+                        Hint("Add everyone who plays. Names are saved for next time.")
+                    } else {
+                        val allIn = playingCount == roster.size
+                        OutlinedButton(onClick = { onAll(!allIn) }) {
+                            Text(if (allIn) "Deselect all" else "Select all")
+                        }
+                        Hint("Tap a name to mark who's here today.")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            roster.forEach { name ->
+                                FilterChip(
+                                    selected = name in active,
+                                    onClick = { onToggle(name) },
+                                    label = { Text(name) },
+                                    trailingIcon = {
+                                        Text(
+                                            "✕",
+                                            modifier = Modifier
+                                                .clickable { onDelete(name) }
+                                                .padding(4.dp),
+                                            color = colors.onSurfaceVariant,
+                                        )
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -287,7 +335,7 @@ private fun WaitingSection(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Waiting · ${waiting.size}", style = MaterialTheme.typography.titleMedium)
-            Hint("Long-press a name and drag it onto a court to choose partners. Roll fills in everyone else.")
+            Hint("Long-press to drag a player onto a court. Roll fills in everyone else.")
             if (waiting.isEmpty()) {
                 Text(
                     "No one waiting",
@@ -320,7 +368,7 @@ private fun CourtCard(
     mode: GameMode,
     drag: DragState,
     onDrop: (String, DropTarget?) -> Unit,
-    onUnassign: (String) -> Unit,
+    onUnpin: (String) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -335,7 +383,7 @@ private fun CourtCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TeamColumn(
                     slots = 0 until mode.perSide,
-                    courtIndex = index, court = court, drag = drag, onDrop = onDrop, onUnassign = onUnassign,
+                    courtIndex = index, court = court, drag = drag, onDrop = onDrop, onUnpin = onUnpin,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
@@ -346,7 +394,7 @@ private fun CourtCard(
                 )
                 TeamColumn(
                     slots = mode.perSide until mode.perCourt,
-                    courtIndex = index, court = court, drag = drag, onDrop = onDrop, onUnassign = onUnassign,
+                    courtIndex = index, court = court, drag = drag, onDrop = onDrop, onUnpin = onUnpin,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -361,7 +409,7 @@ private fun TeamColumn(
     court: List<Placement?>,
     drag: DragState,
     onDrop: (String, DropTarget?) -> Unit,
-    onUnassign: (String) -> Unit,
+    onUnpin: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -371,7 +419,7 @@ private fun TeamColumn(
                 placement = court.getOrNull(i),
                 drag = drag,
                 onDrop = onDrop,
-                onUnassign = onUnassign,
+                onUnpin = onUnpin,
             )
         }
     }
@@ -383,7 +431,7 @@ private fun SlotBox(
     placement: Placement?,
     drag: DragState,
     onDrop: (String, DropTarget?) -> Unit,
-    onUnassign: (String) -> Unit,
+    onUnpin: (String) -> Unit,
 ) {
     val target = DropTarget.Court(slot)
     val hovered = drag.hovered == target
@@ -423,13 +471,16 @@ private fun SlotBox(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                Text(
-                    "✕",
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier
-                        .clickable { onUnassign(placement.name) }
-                        .padding(8.dp),
-                )
+                if (placement.pinned) {
+                    // Un-pin only: the player stays here but can be reshuffled by the next roll.
+                    Text(
+                        "✕",
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier
+                            .clickable { onUnpin(placement.name) }
+                            .padding(8.dp),
+                    )
+                }
             }
         }
     }
@@ -471,7 +522,27 @@ private fun DraggedChip(drag: DragState) {
     )
 }
 
+/** A single downward-pointing chevron line (∨). */
+@Composable
+private fun Chevron(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val stroke = 3.dp.toPx()
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.2f, h * 0.35f)
+            lineTo(w * 0.5f, h * 0.65f)
+            lineTo(w * 0.8f, h * 0.35f)
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
+}
+
 @Composable
 private fun Hint(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

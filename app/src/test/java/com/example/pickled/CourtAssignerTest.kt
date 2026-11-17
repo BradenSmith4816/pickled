@@ -49,6 +49,13 @@ class CourtAssignerTest {
     }
 
     @Test
+    fun unpin_keepsPlayerInSlot() {
+        var courts = CourtAssigner.place(CourtAssigner.empty(1, GameMode.SINGLES), "A", Slot(0, 0))
+        courts = CourtAssigner.unpin(courts, "A")
+        assertEquals(Placement("A", pinned = false), courts[0][0])
+    }
+
+    @Test
     fun place_nullTargetUnassigns() {
         var courts = CourtAssigner.place(CourtAssigner.empty(1, GameMode.SINGLES), "A", Slot(0, 0))
         courts = CourtAssigner.place(courts, "A", null)

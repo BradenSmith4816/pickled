@@ -21,7 +21,7 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
     var mode by mutableStateOf(store.loadMode())
         private set
 
-    var courts by mutableStateOf(CourtAssigner.empty(store.loadCourtCount().coerceAtLeast(1), mode))
+    var courts by mutableStateOf(CourtAssigner.empty(DEFAULT_COURTS, mode))
         private set
 
     val activePlayers: List<String> get() = roster.filter { it in active }
@@ -32,9 +32,6 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
             val placed = CourtAssigner.placedNames(courts)
             return activePlayers.filter { it !in placed }
         }
-
-    /** How many full courts the checked-in players can fill. */
-    val suggestedCourts: Int get() = activePlayers.size / mode.perCourt
 
     fun addPlayer(raw: String) {
         val name = raw.trim()
@@ -97,9 +94,15 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
         courts = CourtAssigner.place(courts, name, target)
     }
 
-    private fun persist() = store.save(roster, active, mode, courts.size)
+    /** Clears the hand-placed status but leaves the player on the court. */
+    fun unpin(name: String) {
+        courts = CourtAssigner.unpin(courts, name)
+    }
+
+    private fun persist() = store.save(roster, active, mode)
 
     companion object {
         const val MAX_COURTS = 12
+        const val DEFAULT_COURTS = 2
     }
 }
