@@ -21,14 +21,11 @@ class PlayerStore(context: Context) {
         prefs.getString(KEY_MODE, null)?.let { runCatching { GameMode.valueOf(it) }.getOrNull() }
             ?: GameMode.DOUBLES
 
-    fun loadCourtCount(): Int = prefs.getInt(KEY_COURTS, 2)
-
-    fun save(roster: List<String>, active: Set<String>, mode: GameMode, courtCount: Int) {
+    fun save(roster: List<String>, active: Set<String>, mode: GameMode) {
         prefs.edit {
             putString(KEY_ROSTER, JSONArray(roster).toString())
             putStringSet(KEY_ACTIVE, active)
             putString(KEY_MODE, mode.name)
-            putInt(KEY_COURTS, courtCount)
         }
     }
 
@@ -36,6 +33,5 @@ class PlayerStore(context: Context) {
         const val KEY_ROSTER = "roster"
         const val KEY_ACTIVE = "active"
         const val KEY_MODE = "mode"
-        const val KEY_COURTS = "courts"
     }
 }
