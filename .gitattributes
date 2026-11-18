@@ -1,0 +1,26 @@
+# Normalize line endings: store LF in the repo and check out LF everywhere,
+# so Windows and macOS/Linux machines produce identical files and clean diffs.
+* text=auto eol=lf
+
+# Windows scripts must keep CRLF to run correctly in cmd.exe.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Unix shell scripts must keep LF (gradlew has no extension).
+gradlew text eol=lf
+*.sh    text eol=lf
+
+# Binary files: never touch line endings or try to diff/merge them.
+*.jar      binary
+*.png      binary
+*.webp     binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.ttf      binary
+*.otf      binary
+*.apk      binary
+*.aab      binary
+*.jks      binary
+*.keystore binary
