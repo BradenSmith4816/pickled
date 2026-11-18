@@ -1,4 +1,4 @@
-package com.example.pickled
+package com.braden.pickleplayers
 
 import org.junit.Test
 

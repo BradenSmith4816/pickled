@@ -4,17 +4,17 @@ plugins {
 }
 
 android {
-    namespace = "com.example.pickled"
+    namespace = "com.braden.pickleplayers"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.pickled"
+        applicationId = "com.braden.pickleplayers"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -22,8 +22,9 @@ android {
     buildTypes {
         release {
             optimization {
+                // Optimize the whole app. A partial packageScope (androidx/kotlin only)
+                // produced an IllegalAccessError crash at startup.
                 enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
             }
         }
     }
