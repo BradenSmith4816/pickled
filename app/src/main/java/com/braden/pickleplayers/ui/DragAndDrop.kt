@@ -1,6 +1,9 @@
 package com.braden.pickleplayers.ui
 
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -13,6 +16,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -22,7 +26,8 @@ import com.braden.pickleplayers.Slot
 /** Where a dragged name can be dropped. */
 sealed interface DropTarget {
     data class Court(val slot: Slot) : DropTarget
-    data object Waiting : DropTarget
+    /** The Players pane: dropping here takes someone off their court. */
+    data object Players : DropTarget
 }
 
 /**
@@ -72,7 +77,7 @@ private class CoordsHolder {
     var coords: LayoutCoordinates? = null
 }
 
-/** Makes this element draggable (after a long-press). [onDrop] receives the target, or null. */
+/** Makes this element draggable after a long-press; [onDrop] receives the target, or null. */
 @Composable
 fun Modifier.dragSource(
     name: String,
@@ -85,22 +90,21 @@ fun Modifier.dragSource(
     return this
         .onGloballyPositioned { holder.coords = it }
         .pointerInput(name, state) {
-            detectDragGesturesAfterLongPress(
-                onDragStart = { local ->
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    val root = holder.coords?.takeIf { it.isAttached }?.localToRoot(local) ?: local
-                    state.start(name, root)
-                },
-                onDrag = { change, delta ->
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                // Null if released early or cancelled (e.g. the list scrolled).
+                val longPress = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                val root = holder.coords?.takeIf { it.isAttached }?.localToRoot(longPress.position)
+                    ?: longPress.position
+                state.start(name, root)
+                val completed = drag(longPress.id) { change ->
+                    state.moveBy(change.positionChange())
                     change.consume()
-                    state.moveBy(delta)
-                },
-                onDragEnd = {
-                    val target = state.hovered
-                    state.end()
-                    currentOnDrop(name, target)
-                },
-                onDragCancel = { state.end() },
-            )
+                }
+                val target = if (completed) state.hovered else null
+                state.end()
+                if (completed) currentOnDrop(name, target)
+            }
         }
 }

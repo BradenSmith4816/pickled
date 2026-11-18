@@ -118,10 +118,11 @@ object CourtAssigner {
         return courts.mapIndexed { c, court -> if (c == courtIndex) new else court }
     }
 
-    /** Adds empty doubles courts or drops trailing ones (their players go back to waiting). */
-    fun resize(courts: Courts, newCount: Int): Courts =
-        if (newCount <= courts.size) courts.take(newCount)
-        else courts + empty(newCount - courts.size)
+    /** Appends an empty doubles court. */
+    fun addCourt(courts: Courts): Courts = courts + Court()
+
+    /** Removes the court at [index]; its players simply drop off the courts. Later courts move up. */
+    fun removeCourt(courts: Courts, index: Int): Courts = courts.filterIndexed { c, _ -> c != index }
 
     private fun mapSlots(courts: Courts, transform: (Placement?) -> Placement?): Courts =
         courts.map { court -> court.copy(slots = court.slots.map(transform)) }

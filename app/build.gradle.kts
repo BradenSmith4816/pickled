@@ -13,8 +13,8 @@ android {
         applicationId = "com.braden.pickleplayers"
         minSdk = 24
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -25,6 +25,11 @@ android {
                 // Optimize the whole app. A partial packageScope (androidx/kotlin only)
                 // produced an IllegalAccessError crash at startup.
                 enable = true
+            }
+            // Package native debug symbols (from Compose's bundled .so) into the
+            // App Bundle so Play Console can symbolicate native crash reports.
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
             }
         }
     }

@@ -10,59 +10,30 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
 
     private val store = PlayerStore(app)
 
-    /** Everyone ever added. Persists across sessions. */
+    /** Everyone in the player list. Persists across sessions; all of them are available to roll. */
     var roster by mutableStateOf(store.loadRoster())
-        private set
-
-    /** Players checked in for the current roll. */
-    var active by mutableStateOf(store.loadActive())
         private set
 
     var courts by mutableStateOf(CourtAssigner.empty(DEFAULT_COURTS))
         private set
 
-    val activePlayers: List<String> get() = roster.filter { it in active }
-
-    /** Active players not currently on a court. */
-    val waiting: List<String>
+    /** Players who aren't on a court: what the Players pane lists. */
+    val offCourt: List<String>
         get() {
             val placed = CourtAssigner.placedNames(courts)
-            return activePlayers.filter { it !in placed }
+            return roster.filter { it !in placed }
         }
 
     fun addPlayer(raw: String) {
         val name = raw.trim()
-        if (name.isEmpty()) return
-        val existing = roster.firstOrNull { it.equals(name, ignoreCase = true) }
-        if (existing != null) {
-            active = active + existing
-        } else {
-            roster = roster + name
-            active = active + name
-        }
+        if (name.isEmpty() || roster.any { it.equals(name, ignoreCase = true) }) return
+        roster = roster + name
         persist()
     }
 
     fun deletePlayer(name: String) {
         roster = roster - name
-        active = active - name
         courts = CourtAssigner.remove(courts, name)
-        persist()
-    }
-
-    fun toggleActive(name: String) {
-        if (name in active) {
-            active = active - name
-            courts = CourtAssigner.remove(courts, name)
-        } else {
-            active = active + name
-        }
-        persist()
-    }
-
-    fun setEveryoneActive(on: Boolean) {
-        active = if (on) roster.toSet() else emptySet()
-        if (!on) courts = CourtAssigner.clear(courts)
         persist()
     }
 
@@ -70,19 +41,24 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
         courts = CourtAssigner.setMode(courts, courtIndex, mode)
     }
 
-    fun setCourtCount(count: Int) {
-        courts = CourtAssigner.resize(courts, count.coerceIn(1, MAX_COURTS))
+    fun addCourt() {
+        if (courts.size < MAX_COURTS) courts = CourtAssigner.addCourt(courts)
+    }
+
+    /** Removes one court (never the last); its players go back to the Players pane. */
+    fun removeCourt(index: Int) {
+        if (courts.size > 1) courts = CourtAssigner.removeCourt(courts, index)
     }
 
     fun roll() {
-        courts = CourtAssigner.roll(courts, activePlayers)
+        courts = CourtAssigner.roll(courts, roster)
     }
 
     fun reset() {
         courts = CourtAssigner.clear(courts)
     }
 
-    /** Drag & drop result: [target] null means "back to waiting". */
+    /** Drag & drop result: [target] null means "back to the Players pane". */
     fun move(name: String, target: Slot?) {
         courts = CourtAssigner.place(courts, name, target)
     }
@@ -92,7 +68,7 @@ class PickledViewModel(app: Application) : AndroidViewModel(app) {
         courts = CourtAssigner.unpin(courts, name)
     }
 
-    private fun persist() = store.save(roster, active)
+    private fun persist() = store.save(roster)
 
     companion object {
         const val MAX_COURTS = 12

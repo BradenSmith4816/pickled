@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import org.json.JSONArray
 
-/** Persists the roster and who's checked in, in SharedPreferences. */
+/** Persists the player list in SharedPreferences. */
 class PlayerStore(context: Context) {
 
     private val prefs = context.getSharedPreferences("pickled", Context.MODE_PRIVATE)
@@ -15,17 +15,15 @@ class PlayerStore(context: Context) {
         return List(array.length()) { array.getString(it) }
     }
 
-    fun loadActive(): Set<String> = prefs.getStringSet(KEY_ACTIVE, null)?.toSet() ?: emptySet()
-
-    fun save(roster: List<String>, active: Set<String>) {
+    fun save(roster: List<String>) {
         prefs.edit {
             putString(KEY_ROSTER, JSONArray(roster).toString())
-            putStringSet(KEY_ACTIVE, active)
+            remove(KEY_LEGACY_ACTIVE) // "checked in" set from v1.1 and earlier; no longer used
         }
     }
 
     private companion object {
         const val KEY_ROSTER = "roster"
-        const val KEY_ACTIVE = "active"
+        const val KEY_LEGACY_ACTIVE = "active"
     }
 }

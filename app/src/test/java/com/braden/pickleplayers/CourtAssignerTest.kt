@@ -71,6 +71,24 @@ class CourtAssignerTest {
     }
 
     @Test
+    fun addCourt_appendsEmptyDoublesCourt() {
+        val courts = CourtAssigner.addCourt(CourtAssigner.setMode(CourtAssigner.empty(1), 0, GameMode.SINGLES))
+        assertEquals(listOf(GameMode.SINGLES, GameMode.DOUBLES), courts.map { it.mode })
+        assertTrue(courts.names().isEmpty())
+    }
+
+    @Test
+    fun removeCourt_dropsThatCourtAndItsPlayers() {
+        var courts = CourtAssigner.setMode(CourtAssigner.empty(3), 2, GameMode.SINGLES)
+        courts = CourtAssigner.place(courts, "A", Slot(0, 0))
+        courts = CourtAssigner.place(courts, "B", Slot(1, 0))
+        courts = CourtAssigner.removeCourt(courts, 0)
+        assertEquals(2, courts.size)
+        assertEquals(listOf("B"), courts.names()) // A went back to the Players pane
+        assertEquals(GameMode.SINGLES, courts[1].mode) // later courts move up intact
+    }
+
+    @Test
     fun place_swapsWhenMovingBetweenSlots() {
         var courts = CourtAssigner.setMode(CourtAssigner.empty(1), 0, GameMode.SINGLES)
         courts = CourtAssigner.place(courts, "A", Slot(0, 0))

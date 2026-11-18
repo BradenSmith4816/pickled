@@ -1,9 +1,6 @@
 package com.braden.pickleplayers.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,27 +15,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,13 +41,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -72,13 +62,11 @@ import kotlin.math.roundToInt
 @Composable
 fun PickledScreen(vm: PickledViewModel = viewModel()) {
     val drag = remember { DragState() }
-    var pendingDelete by remember { mutableStateOf<String?>(null) }
-    var playersExpanded by rememberSaveable { mutableStateOf(true) }
 
     val onDrop: (String, DropTarget?) -> Unit = { name, target ->
         when (target) {
             is DropTarget.Court -> vm.move(name, target.slot)
-            DropTarget.Waiting -> vm.move(name, null)
+            DropTarget.Players -> vm.move(name, null)
             null -> Unit
         }
     }
@@ -93,11 +81,8 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
                     ) { Text("Reset") }
                     Spacer(Modifier.width(12.dp))
                     Button(
-                        onClick = {
-                            vm.roll()
-                            playersExpanded = false
-                        },
-                        enabled = vm.activePlayers.isNotEmpty(),
+                        onClick = vm::roll,
+                        enabled = vm.roster.isNotEmpty(),
                         modifier = Modifier.weight(1f).padding(end = 16.dp).height(52.dp),
                     ) {
                         Text("🎲  Roll", style = MaterialTheme.typography.titleMedium)
@@ -119,76 +104,40 @@ fun PickledScreen(vm: PickledViewModel = viewModel()) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 8.dp),
                 )
-                CourtCountRow(
-                    courtCount = vm.courts.size,
-                    onCourtCount = vm::setCourtCount,
-                )
                 PlayersSection(
-                    expanded = playersExpanded,
-                    onExpandedChange = { playersExpanded = it },
                     roster = vm.roster,
-                    active = vm.active,
-                    onAdd = vm::addPlayer,
-                    onToggle = vm::toggleActive,
-                    onDelete = { pendingDelete = it },
-                    onAll = vm::setEveryoneActive,
-                )
-                WaitingSection(
-                    waiting = vm.waiting,
+                    offCourt = vm.offCourt,
                     drag = drag,
                     onDrop = onDrop,
+                    onAdd = vm::addPlayer,
+                    onDelete = vm::deletePlayer,
                 )
                 vm.courts.forEachIndexed { index, court ->
                     CourtCard(
                         index = index,
                         court = court,
                         onMode = { vm.setCourtMode(index, it) },
+                        // There must always be at least one court.
+                        onRemove = if (vm.courts.size > 1) ({ vm.removeCourt(index) }) else null,
                         drag = drag,
                         onDrop = onDrop,
                         onUnpin = vm::unpin,
                     )
                 }
+                if (vm.courts.size < PickledViewModel.MAX_COURTS) {
+                    OutlinedButton(
+                        onClick = vm::addCourt,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .semantics { contentDescription = "Add court" },
+                    ) {
+                        Text("+", style = MaterialTheme.typography.headlineSmall)
+                    }
+                }
             }
         }
         DraggedChip(drag)
-    }
-
-    pendingDelete?.let { name ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("Remove $name?") },
-            text = { Text("They'll be removed from your saved player list.") },
-            confirmButton = {
-                TextButton(onClick = { vm.deletePlayer(name); pendingDelete = null }) { Text("Remove") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
-            },
-        )
-    }
-}
-
-@Composable
-private fun CourtCountRow(
-    courtCount: Int,
-    onCourtCount: (Int) -> Unit,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Courts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        FilledTonalIconButton(onClick = { onCourtCount(courtCount - 1) }, enabled = courtCount > 1) {
-            Text("−", style = MaterialTheme.typography.titleLarge)
-        }
-        Text(
-            "$courtCount",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(horizontal = 12.dp),
-        )
-        FilledTonalIconButton(
-            onClick = { onCourtCount(courtCount + 1) },
-            enabled = courtCount < PickledViewModel.MAX_COURTS,
-        ) {
-            Text("+", style = MaterialTheme.typography.titleLarge)
-        }
     }
 }
 
@@ -215,94 +164,85 @@ private fun ModeToggle(mode: GameMode, onMode: (GameMode) -> Unit) {
     }
 }
 
+/**
+ * The single list of players. Shows everyone who isn't on a court: long-press to drag
+ * onto a court, ✕ to remove. It is also the drop target for taking someone off a court.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlayersSection(
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
     roster: List<String>,
-    active: Set<String>,
+    offCourt: List<String>,
+    drag: DragState,
+    onDrop: (String, DropTarget?) -> Unit,
     onAdd: (String) -> Unit,
-    onToggle: (String) -> Unit,
     onDelete: (String) -> Unit,
-    onAll: (Boolean) -> Unit,
 ) {
     var newName by rememberSaveable { mutableStateOf("") }
     val submit = {
         onAdd(newName)
         newName = ""
     }
-    val playingCount = roster.count { it in active }
     val colors = MaterialTheme.colorScheme
-    // Chevron points down when open, right when collapsed.
-    val arrowRotation by animateFloatAsState(if (expanded) 0f else -90f, label = "arrow")
+    val hovered = drag.hovered == DropTarget.Players
+    val someoneOnCourt = offCourt.size < roster.size
 
-    Card(Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth().dropTarget(DropTarget.Players, drag),
+        border = if (hovered) BorderStroke(2.dp, colors.primary) else null,
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Whole header row toggles.
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onExpandedChange(!expanded) }
-                    .heightIn(min = 44.dp),
-            ) {
-                Chevron(
-                    color = colors.primary,
-                    modifier = Modifier
-                        .padding(end = 10.dp)
-                        .size(24.dp)
-                        .rotate(arrowRotation),
-                )
-                Text(
-                    "Players · $playingCount playing",
-                    style = MaterialTheme.typography.titleMedium,
+            Text(
+                buildString {
+                    append("Players · ${roster.size}")
+                    if (someoneOnCourt && offCourt.isNotEmpty()) append(" · ${offCourt.size} waiting")
+                },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    placeholder = { Text("Add a name") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
                     modifier = Modifier.weight(1f),
                 )
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = submit, enabled = newName.isNotBlank()) { Text("Add") }
             }
-            AnimatedVisibility(visible = expanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = newName,
-                            onValueChange = { newName = it },
-                            placeholder = { Text("Add a name") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                capitalization = KeyboardCapitalization.Words,
-                                imeAction = ImeAction.Done,
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { submit() }),
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Button(onClick = submit, enabled = newName.isNotBlank()) { Text("Add") }
-                    }
-                    if (roster.isEmpty()) {
-                        Hint("Add everyone who plays. Names are saved for next time.")
-                    } else {
-                        val allIn = playingCount == roster.size
-                        OutlinedButton(onClick = { onAll(!allIn) }) {
-                            Text(if (allIn) "Deselect all" else "Select all")
-                        }
-                        Hint("Tap a name to mark who's here today.")
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            roster.forEach { name ->
-                                FilterChip(
-                                    selected = name in active,
-                                    onClick = { onToggle(name) },
-                                    label = { Text(name) },
-                                    trailingIcon = {
-                                        Text(
-                                            "✕",
-                                            modifier = Modifier
-                                                .clickable { onDelete(name) }
-                                                .padding(4.dp),
-                                            color = colors.onSurfaceVariant,
-                                        )
-                                    },
-                                )
-                            }
+            if (roster.isEmpty()) {
+                Text(
+                    "No players added yet",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontStyle = FontStyle.Italic,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+            } else {
+                Hint("Long-press to drag a player onto a court. Roll fills in everyone else.")
+                if (offCourt.isEmpty()) {
+                    Text(
+                        "Everyone's on a court",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                } else {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        offCourt.forEach { name ->
+                            PlayerChip(
+                                name = name,
+                                dragging = drag.dragging == name,
+                                onDelete = { onDelete(name) },
+                                modifier = Modifier.dragSource(name, drag, onDrop),
+                            )
                         }
                     }
                 }
@@ -311,43 +251,36 @@ private fun PlayersSection(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * A player in the Players pane. Long-press handling comes in through [modifier];
+ * the ✕ removes them entirely.
+ */
 @Composable
-private fun WaitingSection(
-    waiting: List<String>,
-    drag: DragState,
-    onDrop: (String, DropTarget?) -> Unit,
+private fun PlayerChip(
+    name: String,
+    dragging: Boolean,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val hovered = drag.hovered == DropTarget.Waiting
-    Card(
-        modifier = Modifier.fillMaxWidth().dropTarget(DropTarget.Waiting, drag),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-        border = if (hovered) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = colors.secondaryContainer,
+        contentColor = colors.onSecondaryContainer,
+        modifier = modifier.alpha(if (dragging) 0.3f else 1f),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Waiting · ${waiting.size}", style = MaterialTheme.typography.titleMedium)
-            Hint("Long-press to drag a player onto a court. Roll fills in everyone else.")
-            if (waiting.isEmpty()) {
-                Text(
-                    "No one waiting",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(vertical = 8.dp),
-                )
-            } else {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    waiting.forEach { name ->
-                        NameChip(
-                            name = name,
-                            modifier = Modifier
-                                .alpha(if (drag.dragging == name) 0.3f else 1f)
-                                .dragSource(name, drag, onDrop),
-                        )
-                    }
-                }
-            }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.heightIn(min = 40.dp).padding(start = 14.dp, end = 2.dp),
+        ) {
+            Text(name, style = MaterialTheme.typography.labelLarge)
+            Text(
+                "✕",
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable(onClickLabel = "Remove $name") { onDelete() }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            )
         }
     }
 }
@@ -357,6 +290,8 @@ private fun CourtCard(
     index: Int,
     court: Court,
     onMode: (GameMode) -> Unit,
+    /** Removes this court; null hides the ✕ (when it's the only court). */
+    onRemove: (() -> Unit)?,
     drag: DragState,
     onDrop: (String, DropTarget?) -> Unit,
     onUnpin: (String) -> Unit,
@@ -374,6 +309,18 @@ private fun CourtCard(
                     modifier = Modifier.weight(1f),
                 )
                 ModeToggle(mode = court.mode, onMode = onMode)
+                if (onRemove != null) {
+                    Text(
+                        "✕",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .clip(RoundedCornerShape(50))
+                            .clickable(onClickLabel = "Remove court ${index + 1}") { onRemove() }
+                            .padding(10.dp),
+                    )
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TeamColumn(
@@ -481,30 +428,15 @@ private fun SlotBox(
     }
 }
 
-@Composable
-private fun NameChip(name: String, modifier: Modifier = Modifier, lifted: Boolean = false) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = if (lifted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-        contentColor = if (lifted) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-        shadowElevation = if (lifted) 8.dp else 1.dp,
-        modifier = modifier,
-    ) {
-        Text(
-            name,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-        )
-    }
-}
-
 /** Floating copy of the name being dragged, shown just above the finger. */
 @Composable
 private fun DraggedChip(drag: DragState) {
     val name = drag.dragging ?: return
-    NameChip(
-        name = name,
-        lifted = true,
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        shadowElevation = 8.dp,
         modifier = Modifier.layout { measurable, constraints ->
             val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
             layout(placeable.width, placeable.height) {
@@ -514,28 +446,15 @@ private fun DraggedChip(drag: DragState) {
                 )
             }
         },
-    )
-}
-
-/** A single downward-pointing chevron line (∨). */
-@Composable
-private fun Chevron(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val stroke = 3.dp.toPx()
-        val w = size.width
-        val h = size.height
-        val path = Path().apply {
-            moveTo(w * 0.2f, h * 0.35f)
-            lineTo(w * 0.5f, h * 0.65f)
-            lineTo(w * 0.8f, h * 0.35f)
-        }
-        drawPath(
-            path = path,
-            color = color,
-            style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    ) {
+        Text(
+            name,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
         )
     }
 }
+
 
 @Composable
 private fun Hint(text: String) {
