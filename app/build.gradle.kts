@@ -26,11 +26,6 @@ android {
                 // produced an IllegalAccessError crash at startup.
                 enable = true
             }
-            // Package native debug symbols (from Compose's bundled .so) into the
-            // App Bundle so Play Console can symbolicate native crash reports.
-            ndk {
-                debugSymbolLevel = "SYMBOL_TABLE"
-            }
         }
     }
     compileOptions {
@@ -43,9 +38,7 @@ android {
 }
 
 dependencies {
-    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.material)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
